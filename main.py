@@ -6,28 +6,19 @@ import simpleaudio as sa
 import os
 import pyfiglet
 import subprocess
+import numpy as np
 
 # Load sound
 alert_sound = sa.WaveObject.from_wave_file("alert.wav")
 
 def send_mac_notification(title, message):
-    """Send a native Mac notification using terminal-notifier"""
-    try:
-        # Try terminal-notifier first (more reliable)
-        subprocess.run([
-            "terminal-notifier", 
-            "-title", title, 
-            "-message", message,
-            "-timeout", "3"
-        ], check=True, capture_output=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        # Fallback to osascript if terminal-notifier is not available
-        try:
-            script = f'display notification "{message}" with title "{title}"'
-            subprocess.run(["osascript", "-e", script], check=True)
-        except subprocess.CalledProcessError:
-            # If both fail, print to console as last resort
-            print(f"NOTIFICATION: {title} - {message}")
+    # Send a native Mac notification using terminal-notifier
+    subprocess.run([
+        "terminal-notifier", 
+        "-title", title, 
+        "-message", message,
+        "-timeout", "3"
+    ], check=True, capture_output=True)
 
 def distance(p1, p2):
     return math.sqrt((p1.x - p2.x) ** 2 + (p1.y - p2.y) ** 2)
@@ -103,16 +94,44 @@ with mp_pose.Pose(min_detection_confidence=0.8, min_tracking_confidence=0.8) as 
             now = time.time()
 
             if trigger:
-                # Show text immediately when wrist is near temple
-                cv2.putText(frame, "Wrist near temple!", (50, 50),
-                            cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 0, 255), 2)
+                # Show warning banner centered on screen
+                warn_text = "!! STOP TOUCHING !!"
+                font = cv2.FONT_HERSHEY_SIMPLEX
+                font_scale = 2
+                thickness = 4
+                text_size = cv2.getTextSize(warn_text, font, font_scale, thickness)[0]
+                text_x = (w - text_size[0]) // 2
+                text_y = int(h * 0.75)
+
+                # Semi-transparent red background
+                overlay = frame.copy()
+                pad = 30
+                cv2.rectangle(overlay,
+                              (text_x - pad, text_y - text_size[1] - pad),
+                              (text_x + text_size[0] + pad, text_y + pad),
+                              (0, 0, 180), -1)
+                cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, frame)
+
+                # White text with black outline for readability
+                cv2.putText(frame, warn_text, (text_x, text_y),
+                            font, font_scale, (0, 0, 0), thickness + 2)
+                cv2.putText(frame, warn_text, (text_x, text_y),
+                            font, font_scale, (255, 255, 255), thickness)
+
+                # Warning triangles on each side
+                tri_y = text_y - text_size[1] // 2
+                for tx in [text_x - pad - 40, text_x + text_size[0] + pad + 10]:
+                    pts = np.array([(tx, tri_y + 15), (tx + 30, tri_y + 15), (tx + 15, tri_y - 15)])
+                    cv2.fillPoly(frame, [pts], (0, 255, 255))
+                    cv2.putText(frame, "!", (tx + 10, tri_y + 10),
+                                cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 0, 0), 2)
 
                 if trigger_start_time == 0:
                     trigger_start_time = now
                 elif now - trigger_start_time >= wait_before_beep_seconds:
                     if now - last_play_time > cooldown_seconds:
                         alert_sound.play()
-                        send_mac_notification("Hair Twist Alert!", "Stop touching your hair!")
+                        send_mac_notification("Stop touching your hair!","You can do it.")
                         last_play_time = now
                         trigger_start_time = 0  # Reset to prevent repeated beeps
             else:
