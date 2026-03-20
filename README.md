@@ -1,4 +1,4 @@
-# Hair Twist Alarm
+# Hair Guard Terminal
 
 ![Preview](images/preview.png)
 
